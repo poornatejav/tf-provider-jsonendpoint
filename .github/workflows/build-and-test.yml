@@ -40,6 +40,7 @@ jobs:
         run: |
           cd terraform-provider-jsonendpoint
           go mod init example.com/demo/jsonendpoint || true
+          echo 'replace github.com/local/jsonendpoint/provider => ./provider' >> go.mod
           go mod tidy
           go build -o terraform-provider-jsonendpoint
 
