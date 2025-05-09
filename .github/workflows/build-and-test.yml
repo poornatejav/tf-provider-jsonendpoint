@@ -1,26 +1,28 @@
-name: Build and Test Terraform Provider
+name: Build, Test, and Push Docker Image
 
 on:
   push:
     branches:
-      - feature/*  # Trigger on push to any branch starting with 'feature/'
+      - feature/*
+
+env:
+  IMAGE_NAME: tf-provider-demo
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Set up Go (since you are building with Go)
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: '1.21'  # Set the Go version
+          go-version: '1.21'
 
-      # Step 3: Install Terraform (based on your Dockerfile)
       - name: Install Terraform
         run: |
           curl -o terraform.zip https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip
@@ -28,25 +30,46 @@ jobs:
           sudo mv terraform /usr/local/bin/
           rm terraform.zip
 
-      # Step 4: Set up Terraform Plugin Directory
-      - name: Create Terraform plugin directory
+      - name: Build mock server
         run: |
-          mkdir -p ~/.terraform.d/plugins
+          cd mockserver
+          go mod init mockserver || true
+          go build -o mockserver
 
-      # Step 5: Build the mock server and provider
-      - name: Build mock server and provider
+      - name: Build Terraform provider
         run: |
-          cd mockserver && go mod init && go build -o mockserver
-          cd ../terraform-provider-jsonendpoint && go mod tidy && go build -o terraform-provider-jsonendpoint
+          cd terraform-provider-jsonendpoint
+          go mod tidy
+          go build -o terraform-provider-jsonendpoint
 
-      # Step 6: Set up the plugin directory and copy the binary
-      - name: Copy binary to plugin folder
+      - name: Set up Terraform plugin
         run: |
-          mkdir -p ~/.terraform.d/plugins
-          mv terraform-provider-jsonendpoint ~/.terraform.d/plugins/
+          mkdir -p ~/.terraform.d/plugins/example.com/demo/jsonendpoint/1.0.0/linux_amd64
+          mv terraform-provider-jsonendpoint ~/.terraform.d/plugins/example.com/demo/jsonendpoint/1.0.0/linux_amd64/
 
-      # Step 7: Verify the installation and binary setup
-      - name: Verify Terraform binary and plugin
+      - name: Create terraform.rc
         run: |
-          terraform version
-          ls ~/.terraform.d/plugins
+          echo 'provider_installation {
+            dev_overrides {
+              "example.com/demo/jsonendpoint" = "~/.terraform.d/plugins/example.com/demo/jsonendpoint"
+            }
+            direct {}
+          }' > ~/.terraformrc
+
+      - name: Run Terraform Init
+        run: |
+          cd terraform-config
+          terraform init
+
+      # ---------- Docker Build and Push ----------
+
+      - name: Log in to Docker Hub
+        run: echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:latest
