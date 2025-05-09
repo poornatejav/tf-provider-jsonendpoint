@@ -39,6 +39,7 @@ jobs:
       - name: Build Terraform provider
         run: |
           cd terraform-provider-jsonendpoint
+          go mod init example.com/demo/jsonendpoint || true
           go mod tidy
           go build -o terraform-provider-jsonendpoint
 
