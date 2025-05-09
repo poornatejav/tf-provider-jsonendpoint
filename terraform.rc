@@ -1,0 +1,11 @@
+# terraform.rc
+provider_installation {
+  # Point to the local plugin directory
+  filesystem_mirror {
+    path    = "/root/.terraform.d/plugins"
+    include = ["terraform-provider-*"]
+  }
+  direct {
+    url = "https://releases.hashicorp.com/terraform-provider-jsonendpoint/"
+  }
+}
