@@ -1,0 +1,62 @@
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+func DataSourceJSONEndpointFetch() *schema.Resource {
+	return &schema.Resource{
+		ReadContext: dataSourceRead,
+
+		Schema: map[string]*schema.Schema{
+			"endpoint": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "API path to fetch, relative to base_url.",
+			},
+			"response": {
+				Type:        schema.TypeMap,
+				Computed:    true,
+				Description: "Parsed JSON response as a map.",
+			},
+		},
+	}
+}
+
+func dataSourceRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	config := m.(*Config)
+	endpoint := d.Get("endpoint").(string)
+	url := config.BaseURL + endpoint
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return diag.Errorf("GET fetch failed: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return diag.Errorf("Unexpected HTTP status: %s", resp.Status)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return diag.Errorf("Failed to read fetch response: %s", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return diag.Errorf("Failed to parse JSON: %s", err)
+	}
+
+	d.SetId(endpoint)
+	d.Set("response", parsed)
+	return nil
+}
